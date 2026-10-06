@@ -1,0 +1,7 @@
+{
+  "name": "@culvert/export-cad",
+  "version": "1.0.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts"
+}

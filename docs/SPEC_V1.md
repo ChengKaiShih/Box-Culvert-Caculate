@@ -1,40 +1,5 @@
 # Box-Culvert-Caculate
 
-> **目前交付：1.0.0-alpha.1，可操作工程試算版。** 原 V1 凍結範圍保留於下文，但不代表所有功能均已完成。詳見 [功能完成表](docs/STATUS.md) 與 [規範核對狀態](docs/CODE_BASIS.md)。
-
-## 啟動
-
-需要 Node.js 22+。
-
-```bash
-npm ci
-npm run dev
-npm test
-npm run build
-```
-
-本機開啟 Vite 顯示的 `/Box-Culvert-Caculate/` 路徑。受限容器可改用 `npx vite --host 127.0.0.1`。
-
-## 操作
-
-1. 設定幾何、材料、土壓、車載及載重組合。初始組合全部為 1.0，僅供模型試算。
-2. 「計算目前車位」檢查模型；「執行車載包絡」掃描正反方向、軸距與兩組土壓。
-3. 圖示為手動車位 EH_max；結果表為全部掃描工況包絡。M 為 kN·m/m，N、V 為 kN/m。
-4. 配筋為 N–M 斷面試算，尚無完整剪力／裂縫／細部合格判定。地盤拉力反力需另作接觸分析。
-5. 儲存／匯入 Project JSON；Excel 含完整控制工況、輸入與來源。PDF 按鈕開啟瀏覽器列印，選「另存為 PDF」。CAD JSON 為幾何資料及配筋表，非施工詳圖。
-
-修改輸入會清除舊結果。參數只暫存於目前瀏覽器；需跨裝置保存時請下載 JSON。
-
-## 部署
-
-已提供 `.github/workflows/pages.yml`。GitHub repository → **Settings → Pages → Build and deployment → Source: GitHub Actions**。完成設定後推送 main 或執行 Deploy GitHub Pages workflow 即可部署。CI 先跑測試及建置，失敗不部署。
-
-預期網址為 `https://ChengKaiShih.github.io/Box-Culvert-Caculate/`；是否已上線請以 Actions 的部署結果為準。
-
-## V1 原始凍結規格
-
-以下保留原訂完整範圍。實際完成項目以 [docs/STATUS.md](docs/STATUS.md) 為準。
-
 箱涵（Box Culvert）專用之 **2D 剛架靜力分析、移動車載包絡、RC 配筋設計與工程輸出工具**。
 
 > 專案狀態：V1 開發中  
@@ -131,8 +96,8 @@ tests                    單位、solver、載重、RC、回歸測試
 
 完整架構與 AI 協作規則請見：
 
-- [ARCHITECTURE.md](ARCHITECTURE.md)
-- [AGENTS.md](AGENTS.md)
+- [ARCHITECTURE.md](../ARCHITECTURE.md)
+- [AGENTS.md](../AGENTS.md)
 
 ## 開發原則
 
