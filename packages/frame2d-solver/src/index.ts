@@ -20,7 +20,9 @@ export function equivalentLoad(load:ElementLoad,L:number,rigid=false):number[]{
    f[0]+=qx*(1-t)*weight;f[3]+=qx*t*weight;
    f[1]+=qy*n[0]*weight;f[2]+=qy*n[1]*weight;f[4]+=qy*n[2]*weight;f[5]+=qy*n[3]*weight;
   }
- }return f;
+ }
+ for(const p of load.points??[]){if(p.x<0||p.x>L)continue;const t=p.x/L,n=rigid?[1-t,0,t,0]:[1-3*t*t+2*t**3,L*(t-2*t*t+t**3),3*t*t-2*t**3,L*(-t*t+t**3)];f[0]+=p.px*(1-t);f[3]+=p.px*t;f[1]+=p.py*n[0];f[2]+=p.py*n[1];f[4]+=p.py*n[2];f[5]+=p.py*n[3];}
+ return f;
 }
 /** A factored model is reused for all vehicle positions; rigid offsets use exact kinematic constraints. */
 export function prepareSolver(model:Model,support?:Project['soil']){
@@ -65,16 +67,17 @@ export function prepareSolver(model:Model,support?:Project['soil']){
    const stations:Station[]=[];
    cache.forEach((a,i)=>{
     const e=model.elements[i];if(e.rigid)return;
-    const f=endForces[i],q=load.element[i],breaks=[0,a.L,...(q.patches??[]).flatMap(p=>[Math.max(0,p.a),Math.min(a.L,p.b)])].sort((a,b)=>a-b);
-    const cut=(x:number)=>{
+    const f=endForces[i],q=load.element[i],breaks=[0,a.L,...(q.points??[]).map(p=>p.x),...(q.patches??[]).flatMap(p=>[Math.max(0,p.a),Math.min(a.L,p.b)])].sort((a,b)=>a-b);
+    const cut=(x:number,left=false)=>{
      const dx=((q.qxEnd??q.qx)-q.qx)/a.L,dy=((q.qyEnd??q.qy)-q.qy)/a.L;
      let N=-f[0]-q.qx*x-dx*x*x/2,V=f[1]+q.qy*x+dy*x*x/2,M=-f[2]+f[1]*x+q.qy*x*x/2+dy*x**3/6;
      for(const p of q.patches??[]){const l=Math.max(0,Math.min(x,p.b)-p.a);if(l>0){N-=p.qx*l;V+=p.qy*l;M+=p.qy*l*(x-p.a-l/2);}}
+     for(const p of q.points??[]){if(x>p.x||(!left&&x===p.x)){N-=p.px;V+=p.py;M+=p.py*(x-p.x);}}
      return {element:i,member:e.member,x,N,V,M};
     };
     const xs=[0,a.L/4,a.L/2,3*a.L/4,a.L,...breaks];
     for(let j=0;j<breaks.length-1;j++){const l=breaks[j],r=breaks[j+1],mid=(l+r)/2,slope=((q.qyEnd??q.qy)-q.qy)/a.L,w=q.qy+slope*l+(q.patches??[]).filter(p=>mid>p.a&&mid<p.b).reduce((s,p)=>s+p.qy,0),vl=cut(l).V;const roots:number[]=[];if(Math.abs(slope)<1e-12){if(Math.abs(w)>1e-12)roots.push(-vl/w);}else{const D=w*w-2*slope*vl;if(D>=0)roots.push((-w+Math.sqrt(D))/slope,(-w-Math.sqrt(D))/slope);}for(const dx of roots){const x=l+dx;if(x>l&&x<r)xs.push(x);}}
-    for(const x of [...new Set(xs)].sort((a,b)=>a-b))stations.push(cut(x));
+    for(const x of [...new Set(xs)].sort((a,b)=>a-b)){stations.push(cut(x));if((q.points??[]).some(p=>p.x===x))stations.push(cut(x,true));}
    });
    return {u,reactions,stations,endForces,residual:Math.max(0,...free.map(i=>Math.abs(res[i])))/Math.max(1,...Fr.map(Math.abs))};
   };

@@ -1,0 +1,22 @@
+import {it,expect} from 'vitest';
+import {cloneProject,parseProject,type Model} from '../packages/domain/src/index';
+import {prepareSolver,emptyLoad} from '../packages/frame2d-solver/src/index';
+import {soilValues,lateralPressure} from '../packages/soil-engine/src/index';
+import {generateModel} from '../packages/model-generator/src/index';
+import {basicLoads,resultant,loadAudit,liveLoad} from '../packages/load-engine/src/index';
+import {vehicleRules,wheelPatches,wheelPoints,axles,scanConfigurations} from '../packages/vehicle-engine/src/index';
+import {analyze} from '../packages/result-engine/src/index';
+it('point load at third point: exact beam reactions, moment and shear jump',()=>{
+ const m:Model={nodes:[{id:0,x:0,y:0},{id:1,x:6,y:0}],elements:[{id:0,i:0,j:1,E:25e6,A:1,I:0.1,member:'T',kind:'top',thickness:1,rigid:false}],members:[],bottomNodes:[],width:6,height:0,wallX:[]};
+ const l=emptyLoad(m);l.element[0].points=[{x:2,px:0,py:-30}];const s=prepareSolver(m).factor([0,1,4])(l);
+ expect(s.reactions[1]).toBeCloseTo(20,8);expect(s.reactions[4]).toBeCloseTo(10,8);expect(Math.max(...s.stations.map(v=>v.M))).toBeCloseTo(40,8);
+ expect(s.stations.filter(v=>v.x===2).map(v=>v.V).sort((a,b)=>a-b)).toEqual(expect.arrayContaining([expect.closeTo(-10,7),expect.closeTo(20,7)]));
+});
+it('code earth values ignore Ka; active soil multiplies gamma only once',()=>{const p=cloneProject();p.soil.ka=0.3;expect(soilValues(p)).toEqual({vertical:18.85,min:4.71,max:9.42});p.soil.mode='active';p.soil.unitWeight=20;expect(soilValues(p)).toEqual({vertical:20,min:6,max:6});expect(lateralPressure(p,2,2,'max')).toBeCloseTo(6*(0.8+0.35/2));});
+it('DL produces only top vertical load and no wall surcharge',()=>{const p=cloneProject();p.soil.additionalDead=10;const m=generateModel(p),l=basicLoads(p,m).DL;expect(resultant(m,l).fx).toBe(0);expect(resultant(m,l).fy).toBeCloseTo(-10*(m.width+p.geometry.wall),9);m.elements.filter(e=>e.kind==='wall').forEach(e=>expect(l.element[e.id]).toEqual({qx:0,qy:0}));});
+it('self-weight audit matches independent rectangular areas and triangles',()=>{const p=cloneProject(),g=p.geometry,a=loadAudit(p,generateModel(p));const W=((3*3+2*.3+2*.35)*(.35+.4)+(2*.35+2*.3)*2.5+3*4*.2*.2/2)*24;expect(a.geometric).toBeCloseTo(W,9);expect(a.applied).toBeCloseTo(W,9);expect(a.parts.reduce((s,v)=>s+v.weight,0)).toBeCloseTo(W,9);});
+it('0.6m uses true points and E=1.2+0.06S; above boundary square spread',()=>{const p=cloneProject();p.soil.cover=.6;expect(vehicleRules(p).E).toBeCloseTo(1.38);expect(wheelPatches(p)).toHaveLength(0);expect(wheelPoints(p)[0].force).toBeCloseTo(45/2*1.2/1.38);expect(liveLoad(p,generateModel(p)).element.some(v=>v.points?.length)).toBe(true);p.soil.cover=.600001;expect(wheelPatches(p).length).toBeGreaterThan(0);});
+it('strict LL exemption boundaries for single and multiple cells',()=>{const p=cloneProject();p.geometry.cells=1;p.geometry.clearWidth=2;p.soil.cover=2.4;expect(vehicleRules(p).ignored).toBe(false);p.soil.cover=2.40001;expect(vehicleRules(p).ignored).toBe(true);p.geometry.cells=2;p.geometry.clearWidth=3;p.soil.cover=6.3;expect(vehicleRules(p).ignored).toBe(false);p.soil.cover=6.30001;expect(vehicleRules(p).ignored).toBe(true);expect(wheelPatches(p)).toEqual([]);expect(wheelPoints(p)).toEqual([]);});
+it('rightward front axle is ahead; both scan directions include full crossings',()=>{const p=cloneProject();expect(axles(p).map(v=>v.x)).toEqual([3,-1.25,-5.5]);const m=generateModel(p),c=scanConfigurations(p,m);expect(c.some(v=>v.direction===1&&v.position>m.width+8.5)).toBe(true);expect(c.some(v=>v.direction===-1&&v.position< -8.5)).toBe(true);});
+it('V1 JSON is explicitly rejected without silently migrating old surcharge',()=>{const p:any=cloneProject();p.schemaVersion=1;expect(()=>parseProject(JSON.stringify(p))).toThrow('V1 地表超載不可直接轉為 DL');});
+it('manual combination equilibrium including eccentric moments and point loads',()=>{const p=cloneProject();p.soil.cover=.6;p.soil.mode='active';p.soil.additionalDead=12;const r=analyze(p);expect(r.cases).toBe(2);expect(Math.abs(r.balance.fx)).toBeLessThan(1e-6);expect(Math.abs(r.balance.fy)).toBeLessThan(1e-6);expect(Math.abs(r.balance.mz)).toBeLessThan(1e-5);});
