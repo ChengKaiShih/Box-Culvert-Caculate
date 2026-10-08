@@ -26,7 +26,7 @@ export function basicLoads(p:Project,model:Model){
  for(const node of model.nodes.filter(n=>n.master===undefined&&model.wallX.includes(n.x)&&(n.y===0||n.y===height))){
   const sides=node.x===0||node.x===model.width?1:2;DC.nodal[node.id*3+1]-=sides*gamma*g.haunch**2/2;
  }
- return {DC,EV,EHmin,EHmax,DL,area:geo.area};
+ return {DC,EV,EHmin,EHmax,DL,IW:waterLoads(p,model).net,area:geo.area};
 }
 export function liveLoad(p:Project,model:Model,position=p.vehicle.position,spacing=p.vehicle.rearSpacing,direction=1,plate=false){
  const LL=emptyLoad(model,'LL + IM');const patches=plate?[]:wheelPatches(p,position,spacing,direction);
@@ -44,7 +44,7 @@ export function liveLoad(p:Project,model:Model,position=p.vehicle.position,spaci
 export function combine(model:Model,parts:Array<[LoadVector,number]>,label:string):LoadVector {
  const out=emptyLoad(model,label);
  for(const [load,factor] of parts){for(let i=0;i<out.nodal.length;i++)out.nodal[i]+=load.nodal[i]*factor;
-  load.element.forEach((q,i)=>{const r=out.element[i];r.qxEnd=(r.qxEnd??0)+(q.qxEnd??q.qx)*factor;r.qyEnd=(r.qyEnd??0)+(q.qyEnd??q.qy)*factor;r.qx+=q.qx*factor;r.qy+=q.qy*factor;r.points=[...(r.points??[]),...(q.points??[]).map(p=>({...p,px:p.px*factor,py:p.py*factor}))];r.patches=[...(r.patches??[]),...(q.patches??[]).map(p=>({...p,qx:p.qx*factor,qy:p.qy*factor}))];});
+  load.element.forEach((q,i)=>{const r=out.element[i];r.qxEnd=(r.qxEnd??0)+(q.qxEnd??q.qx)*factor;r.qyEnd=(r.qyEnd??0)+(q.qyEnd??q.qy)*factor;r.qx+=q.qx*factor;r.qy+=q.qy*factor;r.points=[...(r.points??[]),...(q.points??[]).map(p=>({...p,px:p.px*factor,py:p.py*factor}))];r.patches=[...(r.patches??[]),...(q.patches??[]).map(p=>({...p,qx:p.qx*factor,qy:p.qy*factor,qxEnd:(p.qxEnd??p.qx)*factor,qyEnd:(p.qyEnd??p.qy)*factor}))];});
  }return out;
 }
 
@@ -62,4 +62,23 @@ export function loadAudit(p:Project,model:Model){
  {name:'EV 垂直覆土',formula:`${soil.vertical} × ${p.soil.cover}`,value:soil.vertical*p.soil.cover,unit:'kPa',force:-resultant(model,loads.EV).fy}];
  const earth=(['min','max'] as const).map(variant=>{const top=lateralPressure(p,model.height,model.height,variant),bottom=lateralPressure(p,0,model.height,variant);return {variant,top,bottom,force:(top+bottom)*model.height/2};});
  return {parts,geometric,applied,difference:applied-geometric,rows,earth,rules};
+}
+
+/** Rectangular interior wet faces. Each cell contributes both walls independently. */
+export function waterLoads(p:Project,model:Model){
+ const gamma=9.80665,Hw=p.water.depth,floor=p.geometry.bottom/2;
+ const sides:Array<{cell:number;member:string;sign:number;load:LoadVector}>=[],bottoms:LoadVector[]=[];
+ for(let cell=0;cell<p.geometry.cells&&Hw>0;cell++){
+  for(const [wall,sign] of [[cell,-1],[cell+1,1]]){
+   const member=wall===0?'A1':wall===p.geometry.cells?'A2':`P${wall}`,load=emptyLoad(model,`IW cell ${cell+1} ${member}`);
+   for(const e of model.elements.filter(e=>e.member===member)){
+    const y=model.nodes[e.i].y,{L,c,s}=elementGeometry(model,e),a=Math.max(0,floor-y),b=Math.min(L,floor+Hw-y);
+    if(b>a){const pa=gamma*(floor+Hw-y-a)*sign,pb=gamma*(floor+Hw-y-b)*sign;load.element[e.id].patches=[{a,b,qx:c*pa,qy:-s*pa,qxEnd:c*pb,qyEnd:-s*pb}];}
+   }sides.push({cell:cell+1,member,sign,load});
+  }
+  const load=emptyLoad(model,`IW bottom ${cell+1}`),l=model.wallX[cell]+(cell===0?p.geometry.wall:p.geometry.partition)/2,r=l+p.geometry.clearWidth;
+  for(const e of model.elements.filter(e=>e.member===`B${cell+1}`)){const x=model.nodes[e.i].x,L=elementGeometry(model,e).L,a=Math.max(0,l-x),b=Math.min(L,r-x);if(b>a)load.element[e.id].patches=[{a,b,qx:0,qy:-gamma*Hw}];}bottoms.push(load);
+ }
+ const net=combine(model,[...sides.map(s=>s.load),...bottoms].map(l=>[l,1]),'IW');
+ return {net,sides,bottoms,gamma,Hw,bottomPressure:gamma*Hw,sideForce:gamma*Hw**2/2,aboveFloor:Hw/3,expectedDown:gamma*Hw*p.geometry.clearWidth*p.geometry.cells,resultant:resultant(model,net),notes:'倒角濕周水壓尚未獨立積分。採矩形淨孔垂直牆面與水平底板模型；各孔同水深。'};
 }

@@ -1,3 +1,12 @@
+# 3.0.0-alpha.1 — 2026-10-07
+
+- 新增內部水壓 IW、Hw 驗證、共同水位、牆／底板施載、隔牆自然抵銷與 Viewer。
+- 新增含 particular deformation 的構件解析撓度；相對支承連線、分段極值、Gross EI 與控制工況；不新增 RC 規範判定。
+- 工程 Trace 結構化，新增斷面勁度、載重代值、等值節點力與端力回算。
+- 分開 Joint／Face 端力，新增節點平衡及可下載矩陣、DOF、F/u/residual 的 Debug JSON。
+- UI／Excel／PDF 共用工程表。schema 3 明確遷移 V2 為乾箱，V1仍拒絕。
+- 保留 V2 無水 M/V/N 與支承離散基準；IW 倒角濕周尚未獨立積分。
+
 # 2.0.0-alpha.1 — 2026-10-06
 
 - 整合載重頁、自重DEBUG、土壓雙模式，DL取代LS且不附帶側壓。

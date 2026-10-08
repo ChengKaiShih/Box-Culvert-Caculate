@@ -1,6 +1,6 @@
 # Box-Culvert-Caculate
 
-> **目前交付：2.0.0-alpha.1，V2 工程試算版。** 原 V1 凍結範圍保留於下文，但不代表所有功能均已完成。詳見 [功能完成表](docs/STATUS.md) 與 [規範核對狀態](docs/CODE_BASIS.md)。
+> **目前交付：3.0.0-alpha.1，V3 工程試算版。** 原 V1 凍結範圍保留於下文，但不代表所有功能均已完成。詳見 [功能完成表](docs/STATUS.md) 與 [規範核對狀態](docs/CODE_BASIS.md)。
 
 ## V2 更新
 
@@ -174,3 +174,15 @@ V1 為純前端應用，計算核心在瀏覽器本機執行；架構仍將 UI �
 Repository 名稱沿用既有：`Box-Culvert-Caculate`。
 
 > 註：`Caculate` 為目前 repository 既有拼字，V1 不主動變更 repo 名稱，以免影響既有 URL 與部署設定。
+
+
+## V3 更新：每個答案可沿公式回算
+
+- 新增 IW 內部水深 0～淨高、各孔同水深、底板向下水壓；隔牆兩側自然抵銷。**倒角濕周水壓尚未獨立積分。**
+- 頂板 Gross EI 相對撓度（排除共同下沉與剛體位移），包含桿內載重解析積分，分段求極值；不作規範 PASS/FAIL。
+- 結構化 Calculation Trace：公式、代值、結果、單位、輸入與來源；斷面／勁度、载重、等值節點力、局部位移與桿端力可追算。
+- 結果頁提供構件端力、Joint／Face Moment、節點平衡、撓度與 Solver Debug。完整 Debug JSON 包含 reduced Global K、F、u、映射與殘差。
+- UI／Excel／PDF 工程表使用同一 Analysis 快照。JSON schema 3；V2 匯入為 Hw=0（IW 係數1），V1 仍需重新確認模型。
+- 分割數1～12；預設4保留 V2 Winkler 結果。撓度精度來自解析回算，不要求加密；改變地盤彈簧分割仍可能改變結構反應。
+
+驗證：`npm test`、`npm run build`、`npm run test:e2e`。工程測試含簡支／固定端 UDL、懸臂點力、剛域力矩轉移、剛體位移排除、滿水合力、隔牆抵銷、V2無水M/V/N基準與跨格式同源。受限容器的 single-process Chromium 可使用 `--workers=4` 使四個 e2e 案例分別啟動程序。

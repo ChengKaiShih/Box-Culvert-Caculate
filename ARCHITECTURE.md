@@ -67,7 +67,7 @@ Winkler：ks × 節點分攤長度 × 1 m；左端 ux 防止整體側移，垂�
 
 ## 專案資料與版本
 
-`schemaVersion: 2`。缺少必要欄位、未知版本、不合理數值或預留功能被啟用時拒絕匯入，不能靜默套預設或忽略。新增必要欄位應升級 schema，提供明確 migration 與測試。
+V2 原為 `schemaVersion: 2`（現行 V3 遷移見下節）。缺少必要欄位、未知版本、不合理數值或預留功能被啟用時拒絕匯入，不能靜默套預設或忽略。新增必要欄位應升級 schema，提供明確 migration 與測試。
 
 每個結果為完整輸入快照。修改任何輸入後清除舊結果，避免新參數搭配舊數值輸出。掃描由 Web Worker 執行，可取消；UI 禁止同時改參數。匯出皆用 `Analysis.project`。
 
@@ -88,3 +88,17 @@ Winkler：ks × 節點分攤長度 × 1 m；左端 ux 防止整體側移，垂�
 ElementLoad.points 儲存 local x / px / py。求解器以 Hermite 形函數組一致節點載重，截面內力保留集中點左右兩側剪力。load-engine.resultant 使用同一套等值力但獨立加總全域力與力矩。幾何自重與施加自重分別求值，避免只重複展示同一數字。
 
 soil-engine.soilValues 是規範／自訂切換唯一入口；規範模式固定垂直18.85與側向4.71/9.42。UI只展示 audit，不撰寫規範公式。所有匯出來自 Analysis 快照。
+
+## V3 工程追溯與內部水壓
+
+現行 `schemaVersion: 3`。`water.depth` 是各孔共同 Hw；`water.waterDepths=[]` 預留，非空陣列明確拒絕；`combination.water` 是 IW 係數。V2 匯入遷移為乾箱 Hw=0、IW 係數1；V1 維持拒絕。V3 暫存另用 v3 key，V2 暫存保留。
+
+`load-engine.waterLoads` 逐孔建立左牆、右牆及底板。線性 patch 的 qEnd 是 patch 本身終點值，不是元素終點值。牆面載重從內底面起，至自由水面止；中隔牆兩側向量在 combine 疊加，未特別刪除。矩形簡化的預期向下合力為 γw × cells × clearWidth × Hw。保留各側原始向量供稽核。Viewer 明繪兩側，即使淨力為零。
+
+`frame2d-solver/recovery.ts` 用桿端力及端點位移積分 Euler–Bernoulli 方程。Macaulay 截斷冪涵蓋線性全跨、線性 patch、集中力。以載重切點分區，斜率多項式經導函數遞迴隔離根與二分求根，處理 δ′=0；取樣僅供作圖。V3 允許每構件1柔性元素，預設4不變，因為 Winkler 彈簧離散仍受 divisions 影響。
+
+局部端力為節點施於構件的力，i/j 均依局部正向，不等同同號的截面 N/V/M。Face 在柔性起迄；Joint 將 Face 力移至中心線剛接點並扣除剛域外載。原 solver 剛域元素 `k=0`，其 `endForces=-fe` 不可冒充完整剛接點端力。
+
+節點平衡將所有原始元素端力、節點外載、地盤及拘束反力，透過剛域力臂移至 root node。Residual 定義為 Σmember − Fnodal − R。Debug JSON 包含 reducedGlobalK、reducedF、reducedU、residual、fullToReducedDOF、固定 DOF、彈簧，以及 local k、T、fe、f、u。拘束自由度 residual 為反力，不應判為求解錯誤。
+
+`result-engine` 逐工況計算頂板相對撓度包絡，包含無車與 EH variants；水深維持使用者設定，沒有自動乾濕包絡。samples 是手動工況曲線，down/up 分別帶控制工況。`trace.ts` 建立結構化公式、代值、結果、單位、輸入與來源；legacy expression/detail 僅保留相容。`tables.ts` 是 UI／Excel／PDF 共用工程表；所有匯出只讀 Analysis 快照。

@@ -2,12 +2,12 @@ import type {Element,ElementLoad,LoadVector,Model,Project,Solution,Station} from
 type Matrix=number[][];
 const zeros=(n:number,m=n):Matrix=>Array.from({length:n},()=>Array(m).fill(0));
 const matvec=(a:Matrix,x:number[])=>a.map(row=>row.reduce((s,v,j)=>s+v*x[j],0));
-function localStiffness(e:Element,L:number):Matrix {
+export function localStiffness(e:Element,L:number):Matrix {
  const a=e.E*e.A/L,b=12*e.E*e.I/L**3,c=6*e.E*e.I/L**2,d=4*e.E*e.I/L,h=d/2;
  return [[a,0,0,-a,0,0],[0,b,c,0,-b,c],[0,c,d,0,-c,h],[-a,0,0,a,0,0],[0,-b,-c,0,b,-c],[0,c,h,0,-c,d]];
 }
 export function elementGeometry(model:Model,e:Element){const a=model.nodes[e.i],b=model.nodes[e.j],L=Math.hypot(b.x-a.x,b.y-a.y);return {L,c:(b.x-a.x)/L,s:(b.y-a.y)/L};}
-function transform(c:number,s:number):Matrix{return [[c,s,0,0,0,0],[-s,c,0,0,0,0],[0,0,1,0,0,0],[0,0,0,c,s,0],[0,0,0,-s,c,0],[0,0,0,0,0,1]];}
+export function transform(c:number,s:number):Matrix{return [[c,s,0,0,0,0],[-s,c,0,0,0,0],[0,0,1,0,0,0],[0,0,0,c,s,0],[0,0,0,-s,c,0],[0,0,0,0,0,1]];}
 /** Exact integration for constant patch loads; 3-point Gauss integrates cubic shape functions. */
 export function equivalentLoad(load:ElementLoad,L:number,rigid=false):number[]{
  const f=Array(6).fill(0);
@@ -16,7 +16,7 @@ export function equivalentLoad(load:ElementLoad,L:number,rigid=false):number[]{
   const r=Math.sqrt(3/5);for(const [z,w] of [[-r,5/9],[0,8/9],[r,5/9]]){
    const x=(a+b)/2+z*(b-a)/2,t=x/L,weight=w*(b-a)/2;
    const n=rigid?[1-t,0,t,0]:[1-3*t*t+2*t**3,L*(t-2*t*t+t**3),3*t*t-2*t**3,L*(-t*t+t**3)];
-   const qx=p.qx+('qxEnd' in p&&p.qxEnd!==undefined?(p.qxEnd-p.qx)*t:0),qy=p.qy+('qyEnd' in p&&p.qyEnd!==undefined?(p.qyEnd-p.qy)*t:0);
+   const qx=p.qx+('qxEnd' in p&&p.qxEnd!==undefined?(p.qxEnd-p.qx)*(x-p.a)/(p.b-p.a):0),qy=p.qy+('qyEnd' in p&&p.qyEnd!==undefined?(p.qyEnd-p.qy)*(x-p.a)/(p.b-p.a):0);
    f[0]+=qx*(1-t)*weight;f[3]+=qx*t*weight;
    f[1]+=qy*n[0]*weight;f[2]+=qy*n[1]*weight;f[4]+=qy*n[2]*weight;f[5]+=qy*n[3]*weight;
   }
@@ -71,17 +71,21 @@ export function prepareSolver(model:Model,support?:Project['soil']){
     const cut=(x:number,left=false)=>{
      const dx=((q.qxEnd??q.qx)-q.qx)/a.L,dy=((q.qyEnd??q.qy)-q.qy)/a.L;
      let N=-f[0]-q.qx*x-dx*x*x/2,V=f[1]+q.qy*x+dy*x*x/2,M=-f[2]+f[1]*x+q.qy*x*x/2+dy*x**3/6;
-     for(const p of q.patches??[]){const l=Math.max(0,Math.min(x,p.b)-p.a);if(l>0){N-=p.qx*l;V+=p.qy*l;M+=p.qy*l*(x-p.a-l/2);}}
+     for(const p of q.patches??[]){const l=Math.max(0,Math.min(x,p.b)-p.a);if(l>0){const sx=((p.qxEnd??p.qx)-p.qx)/(p.b-p.a),sy=((p.qyEnd??p.qy)-p.qy)/(p.b-p.a);N-=p.qx*l+sx*l*l/2;V+=p.qy*l+sy*l*l/2;M+=p.qy*l*(x-p.a-l/2)+sy*(l*l*(x-p.a)/2-l**3/3);}}
      for(const p of q.points??[]){if(x>p.x||(!left&&x===p.x)){N-=p.px;V+=p.py;M+=p.py*(x-p.x);}}
      return {element:i,member:e.member,x,N,V,M};
     };
     const xs=[0,a.L/4,a.L/2,3*a.L/4,a.L,...breaks];
-    for(let j=0;j<breaks.length-1;j++){const l=breaks[j],r=breaks[j+1],mid=(l+r)/2,slope=((q.qyEnd??q.qy)-q.qy)/a.L,w=q.qy+slope*l+(q.patches??[]).filter(p=>mid>p.a&&mid<p.b).reduce((s,p)=>s+p.qy,0),vl=cut(l).V;const roots:number[]=[];if(Math.abs(slope)<1e-12){if(Math.abs(w)>1e-12)roots.push(-vl/w);}else{const D=w*w-2*slope*vl;if(D>=0)roots.push((-w+Math.sqrt(D))/slope,(-w-Math.sqrt(D))/slope);}for(const dx of roots){const x=l+dx;if(x>l&&x<r)xs.push(x);}}
+    for(let j=0;j<breaks.length-1;j++){const l=breaks[j],r=breaks[j+1],mid=(l+r)/2,slope=((q.qyEnd??q.qy)-q.qy)/a.L+(q.patches??[]).filter(p=>mid>p.a&&mid<p.b).reduce((s,p)=>s+((p.qyEnd??p.qy)-p.qy)/(p.b-p.a),0),w=q.qy+((q.qyEnd??q.qy)-q.qy)/a.L*l+(q.patches??[]).filter(p=>mid>p.a&&mid<p.b).reduce((s,p)=>s+p.qy+((p.qyEnd??p.qy)-p.qy)*(l-p.a)/(p.b-p.a),0),vl=cut(l).V;const roots:number[]=[];if(Math.abs(slope)<1e-12){if(Math.abs(w)>1e-12)roots.push(-vl/w);}else{const D=w*w-2*slope*vl;if(D>=0)roots.push((-w+Math.sqrt(D))/slope,(-w-Math.sqrt(D))/slope);}for(const dx of roots){const x=l+dx;if(x>l&&x<r)xs.push(x);}}
     for(const x of [...new Set(xs)].sort((a,b)=>a-b)){stations.push(cut(x));if((q.points??[]).some(p=>p.x===x))stations.push(cut(x,true));}
    });
    return {u,reactions,stations,endForces,residual:Math.max(0,...free.map(i=>Math.abs(res[i])))/Math.max(1,...Fr.map(Math.abs))};
   };
  }
- return {factor};
+ return {factor,system:(solution:Solution,load:LoadVector)=>{
+ const fullF=[...load.nodal];cache.forEach((a,i)=>{const f=equivalentLoad(load.element[i],a.L,model.elements[i].rigid);for(let j=0;j<6;j++)for(let k=0;k<6;k++)fullF[a.dofs[j]]+=a.T[k][j]*f[k];});
+ const reducedF=Array(nr).fill(0);fullF.forEach((v,i)=>maps[i].forEach(([j,w])=>reducedF[j]+=v*w));const reducedU=roots.flatMap(n=>solution.u.slice(n.id*3,n.id*3+3));
+ return {reducedGlobalK:K,reducedF,reducedU,residual:matvec(K,reducedU).map((v,i)=>v-reducedF[i]),fullToReducedDOF:maps,rootNodes:roots.map(n=>n.id),fixedReducedDOF:[...fixed],springs,units:'kN, m, rad；K 各項依自由度分別為 kN/m、kN、kN·m；拘束 DOF residual 為反力'};
+ }};
 }
 export function emptyLoad(model:Model,label=''):LoadVector{return {label,nodal:Array(model.nodes.length*3).fill(0),element:model.elements.map(()=>({qx:0,qy:0}))};}
